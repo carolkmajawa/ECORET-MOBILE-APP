@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "ECORET Chairman",
+    "slug": "ecoret-microcrediteagancy",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#1293AF"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#C50982"
+      }
+    },
+    "ios": {
+      "supportsTablet": false
+    },
+     "dependencies": {
+    "expo-image-picker": "~10.3.0"
+  },
+    "extra": {
+      "eas": {
+        "projectId": "bea37353-6bb9-4381-87cc-d1083450cdc5"
+      }
+    },
+    "owner": "ecoret-team",
+    "plugins": [
+      "expo-secure-store",
+      "expo-sqlite"
+    ]
+  }
+}

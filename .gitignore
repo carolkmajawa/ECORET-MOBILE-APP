@@ -1,0 +1,10 @@
+﻿node_modules/
+android/app/build/
+android/build/
+ios/Pods/
+ios/build/
+.expo/
+.env
+*.keystore
+*.log
+.DS_Store
