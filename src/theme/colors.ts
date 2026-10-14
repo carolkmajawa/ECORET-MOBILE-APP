@@ -1,12 +1,12 @@
 // src/theme/colors.ts
 export const colors = {
-  primary: '#C50982',
+  primary: '#886da0',
   primaryDark: '#8F0660',
   primaryLight: '#886da0',
   secondary: '#1293AF',
   secondaryDark: '#0B6B80',
   secondaryLight: '#21A1DB',
-  accent: '#f59e0b',
+  accent: '#21A1DB',
   background: '#f3f4f6',
   surface: '#ffffff',
   text: '#111827',

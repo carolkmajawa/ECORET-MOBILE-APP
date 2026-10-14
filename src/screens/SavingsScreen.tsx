@@ -1,972 +1,3 @@
-// // src/screens/SavingsScreen.tsx - COMPLETE WITH BACK BUTTON
-// import React, { useState, useEffect, useCallback } from 'react';
-// import {
-//   View,
-//   Text,
-//   StyleSheet,
-//   ScrollView,
-//   SafeAreaView,
-//   TouchableOpacity,
-//   ActivityIndicator,
-//   Alert,
-//   TextInput,
-//   FlatList,
-//   Modal,
-//   RefreshControl,
-//   Platform,
-// } from 'react-native';
-// import { useNavigation } from '@react-navigation/native';
-// import Icon from 'react-native-vector-icons/Ionicons';
-// import { colors } from '../theme/colors';
-// import { groupAPI, savingsAPI } from '../api/endpoints';
-// import { useAuth } from '../auth/AuthContext';
-// import { api } from '../api/client';
-
-// interface Member {
-//   id: string;
-//   full_name: string;
-//   phone_number: string;
-// }
-
-// interface SavingTransaction {
-//   id: string;
-//   member_id: string;
-//   member_name: string;
-//   amount: number;
-//   transaction_type: 'deposit' | 'withdrawal';
-//   transaction_date: string;
-//   notes: string;
-//   reference_number: string;
-//   recorded_by: string;
-// }
-
-// type ViewType = 'deposits' | 'withdrawals' | 'history';
-
-// export function SavingsScreen() {
-//   const navigation = useNavigation();
-//   const { user } = useAuth();
-//   const [loading, setLoading] = useState(true);
-//   const [refreshing, setRefreshing] = useState(false);
-//   const [activeView, setActiveView] = useState<ViewType>('deposits');
-//   const [searchQuery, setSearchQuery] = useState('');
-//   const [members, setMembers] = useState<Member[]>([]);
-//   const [savings, setSavings] = useState<SavingTransaction[]>([]);
-//   const [showAddModal, setShowAddModal] = useState(false);
-//   const [showMemberSelector, setShowMemberSelector] = useState(false);
-//   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-//   const [transactionType, setTransactionType] = useState<'deposit' | 'withdrawal'>('deposit');
-//   const [amount, setAmount] = useState('');
-//   const [notes, setNotes] = useState('');
-//   const [referenceNumber, setReferenceNumber] = useState('');
-//   const [isSubmitting, setIsSubmitting] = useState(false);
-//   const [groupId, setGroupId] = useState<string | null>(null);
-//   const [totalDeposits, setTotalDeposits] = useState(0);
-//   const [totalWithdrawals, setTotalWithdrawals] = useState(0);
-//   const [balance, setBalance] = useState(0);
-
-//   useEffect(() => {
-//     loadGroupAndData();
-//   }, []);
-
-//   const loadGroupAndData = async () => {
-//     try {
-//       setLoading(true);
-//       const response = await groupAPI.getGroups();
-//       const results = Array.isArray(response.data) ? response.data : response.data.results || [];
-//       if (results.length > 0) {
-//         setGroupId(results[0].id);
-//         await loadMembers(results[0].id);
-//         await loadSavingsData();
-//       } else {
-//         Alert.alert('No Group', 'You are not assigned to any group yet.');
-//       }
-//     } catch (error) {
-//       console.error('Failed to load group:', error);
-//       Alert.alert('Error', 'Failed to load group data');
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const loadMembers = async (groupId: string) => {
-//     try {
-//       const response = await groupAPI.getMembers(groupId);
-//       const membersData = Array.isArray(response.data) ? response.data : [];
-//       setMembers(membersData.map((m: any) => ({
-//         id: m.id,
-//         full_name: m.full_name,
-//         phone_number: m.phone_number,
-//       })));
-//     } catch (error) {
-//       console.error('Failed to load members:', error);
-//     }
-//   };
-
-//   const loadSavingsData = async () => {
-//     try {
-//       console.log('📡 Fetching savings data...');
-//       const response = await savingsAPI.getSavings();
-//       console.log('📊 Raw savings response:', JSON.stringify(response.data, null, 2));
-      
-//       let allSavings = [];
-//       if (Array.isArray(response.data)) {
-//         allSavings = response.data;
-//       } else if (response.data?.results) {
-//         allSavings = response.data.results;
-//       } else {
-//         allSavings = response.data || [];
-//       }
-      
-//       if (allSavings.length === 0) {
-//         setSavings([]);
-//         setTotalDeposits(0);
-//         setTotalWithdrawals(0);
-//         setBalance(0);
-//         return;
-//       }
-      
-//       const transactions: SavingTransaction[] = allSavings.map((s: any) => {
-//         let memberName = 'Unknown Member';
-//         if (s.member_name) {
-//           memberName = s.member_name;
-//         } else if (s.member_details) {
-//           memberName = s.member_details.full_name || 'Unknown Member';
-//         } else if (s.member && typeof s.member === 'object') {
-//           memberName = s.member.full_name || 'Unknown Member';
-//         }
-        
-//         let memberId = s.member || s.member_id || '';
-//         if (typeof memberId === 'object' && memberId.id) {
-//           memberId = memberId.id;
-//         }
-        
-//         const amount = parseFloat(s.amount) || 0;
-//         let transactionType: 'deposit' | 'withdrawal' = 'deposit';
-//         if (s.transaction_type === 'withdrawal' || s.transaction_type === 'withdraw') {
-//           transactionType = 'withdrawal';
-//         }
-        
-//         return {
-//           id: s.id || `txn_${Date.now()}_${Math.random()}`,
-//           member_id: memberId,
-//           member_name: memberName,
-//           amount: amount,
-//           transaction_type: transactionType,
-//           transaction_date: s.transaction_date || s.created_at || new Date().toISOString(),
-//           notes: s.notes || '',
-//           reference_number: s.reference_number || s.id || '',
-//           recorded_by: s.recorded_by || '',
-//         };
-//       });
-      
-//       transactions.sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
-//       setSavings(transactions);
-      
-//       const deposits = transactions.filter(t => t.transaction_type === 'deposit');
-//       const withdrawals = transactions.filter(t => t.transaction_type === 'withdrawal');
-      
-//       const totalDep = deposits.reduce((sum, t) => sum + t.amount, 0);
-//       const totalWith = withdrawals.reduce((sum, t) => sum + t.amount, 0);
-      
-//       setTotalDeposits(totalDep);
-//       setTotalWithdrawals(totalWith);
-//       setBalance(totalDep - totalWith);
-      
-//     } catch (error) {
-//       console.error('❌ Failed to load savings:', error);
-//       Alert.alert('Error', 'Failed to load savings data');
-//     }
-//   };
-
-//   const onRefresh = async () => {
-//     setRefreshing(true);
-//     await loadSavingsData();
-//     setRefreshing(false);
-//   };
-
-//   const handleAddTransaction = async () => {
-//     if (!selectedMember) {
-//       Alert.alert('Error', 'Please select a member');
-//       return;
-//     }
-
-//     const amountValue = parseFloat(amount);
-//     if (!amountValue || amountValue <= 0) {
-//       Alert.alert('Error', 'Please enter a valid amount');
-//       return;
-//     }
-
-//     if (transactionType === 'withdrawal' && amountValue > balance) {
-//       Alert.alert('Error', `Insufficient balance. Available balance: MK${balance.toLocaleString()}`);
-//       return;
-//     }
-
-//     setIsSubmitting(true);
-//     try {
-//       const data = {
-//         member: selectedMember.id,
-//         amount: amountValue,
-//         transaction_type: transactionType,
-//         transaction_date: new Date().toISOString(),
-//         notes: notes || `${transactionType === 'deposit' ? 'Deposit' : 'Withdrawal'} for ${selectedMember.full_name}`,
-//         reference_number: referenceNumber || `SAV${Date.now()}`,
-//         saving_type: 'voluntary',
-//       };
-
-//       console.log('📤 Sending to backend:', JSON.stringify(data, null, 2));
-
-//       const response = await savingsAPI.createSaving(data);
-//       console.log('📥 Response:', response.data);
-      
-//       Alert.alert(
-//         '✅ Success', 
-//         `${transactionType === 'deposit' ? 'Deposit' : 'Withdrawal'} of MK${amountValue.toLocaleString()} recorded for ${selectedMember.full_name}!`
-//       );
-      
-//       setShowAddModal(false);
-//       setSelectedMember(null);
-//       setAmount('');
-//       setNotes('');
-//       setReferenceNumber('');
-      
-//       await loadSavingsData();
-//     } catch (error: any) {
-//       console.error('❌ Failed to save transaction:', error);
-//       Alert.alert('❌ Error', 'Failed to record transaction. Please try again.');
-//     } finally {
-//       setIsSubmitting(false);
-//     }
-//   };
-
-//   const filterTransactions = (transactions: SavingTransaction[]) => {
-//     if (!searchQuery) return transactions;
-//     const query = searchQuery.toLowerCase();
-//     return transactions.filter(t => 
-//       t.member_name.toLowerCase().includes(query) ||
-//       t.notes?.toLowerCase().includes(query) ||
-//       t.reference_number?.toLowerCase().includes(query)
-//     );
-//   };
-
-//   const getFilteredTransactions = () => {
-//     let filtered = savings;
-//     if (activeView === 'deposits') {
-//       filtered = savings.filter(t => t.transaction_type === 'deposit');
-//     } else if (activeView === 'withdrawals') {
-//       filtered = savings.filter(t => t.transaction_type === 'withdrawal');
-//     }
-//     return filterTransactions(filtered);
-//   };
-
-//   const renderTransaction = ({ item }: { item: SavingTransaction }) => {
-//     const isDeposit = item.transaction_type === 'deposit';
-//     return (
-//       <View style={styles.transactionCard}>
-//         <View style={styles.transactionHeader}>
-//           <View style={styles.transactionLeft}>
-//             <View style={[styles.transactionIcon, isDeposit ? styles.depositIcon : styles.withdrawalIcon]}>
-//               <Text style={styles.transactionIconText}>{isDeposit ? '💰' : '💸'}</Text>
-//             </View>
-//             <View>
-//               <Text style={styles.transactionMember}>{item.member_name}</Text>
-//               <Text style={styles.transactionDate}>
-//                 {new Date(item.transaction_date).toLocaleDateString()}
-//                 {item.reference_number && ` • Ref: ${item.reference_number}`}
-//               </Text>
-//             </View>
-//           </View>
-//           <View style={styles.transactionRight}>
-//             <Text style={[styles.transactionAmount, isDeposit ? styles.depositAmount : styles.withdrawalAmount]}>
-//               {isDeposit ? '+' : '-'} MK{item.amount.toLocaleString()}
-//             </Text>
-//           </View>
-//         </View>
-//         {item.notes && <Text style={styles.transactionNotes}>{item.notes}</Text>}
-//       </View>
-//     );
-//   };
-
-//   const renderMemberCard = ({ item }: { item: Member }) => (
-//     <TouchableOpacity
-//       style={[styles.memberCard, selectedMember?.id === item.id && styles.selectedMemberCard]}
-//       onPress={() => {
-//         setSelectedMember(item);
-//         setShowMemberSelector(false);
-//       }}
-//       activeOpacity={0.7}
-//     >
-//       <Text style={styles.memberCardName}>{item.full_name}</Text>
-//       <Text style={styles.memberCardPhone}>{item.phone_number}</Text>
-//     </TouchableOpacity>
-//   );
-
-//   const filteredTransactions = getFilteredTransactions();
-
-//   if (loading) {
-//     return (
-//       <SafeAreaView style={styles.centered}>
-//         <ActivityIndicator size="large" color={colors.primary} />
-//       </SafeAreaView>
-//     );
-//   }
-
-//   return (
-//     <SafeAreaView style={styles.container}>
-//       {/* Header with Back Button */}
-//       <View style={styles.headerContainer}>
-//         <TouchableOpacity
-//           style={styles.backButton}
-//           onPress={() => navigation.goBack()}
-//           activeOpacity={0.7}
-//         >
-//           <Icon name="arrow-back" size={24} color="#FFFFFF" />
-//         </TouchableOpacity>
-//         <Text style={styles.headerTitle}>Savings Collection</Text>
-//         <View style={styles.headerSpacer} />
-//       </View>
-
-//       {/* Subtitle */}
-//       <View style={styles.subtitleContainer}>
-//         <Text style={styles.subtitle}>Manage member savings deposits and withdrawals</Text>
-//       </View>
-
-//       {/* Summary Cards */}
-//       <View style={styles.summaryContainer}>
-//         <View style={[styles.summaryCard, styles.depositSummary]}>
-//           <Text style={styles.summaryLabel}>Total Deposits</Text>
-//           <Text style={[styles.summaryValue, styles.depositAmount]}>
-//             MK{totalDeposits.toLocaleString()}
-//           </Text>
-//         </View>
-//         <View style={[styles.summaryCard, styles.withdrawalSummary]}>
-//           <Text style={styles.summaryLabel}>Total Withdrawals</Text>
-//           <Text style={[styles.summaryValue, styles.withdrawalAmount]}>
-//             MK{totalWithdrawals.toLocaleString()}
-//           </Text>
-//         </View>
-//         <View style={[styles.summaryCard, styles.balanceSummary]}>
-//           <Text style={styles.summaryLabel}>Balance</Text>
-//           <Text style={[styles.summaryValue, styles.balanceAmount]}>
-//             MK{balance.toLocaleString()}
-//           </Text>
-//         </View>
-//       </View>
-
-//       {/* Tabs */}
-//       <View style={styles.tabContainer}>
-//         {['deposits', 'withdrawals', 'history'].map((tab) => (
-//           <TouchableOpacity
-//             key={tab}
-//             style={[styles.tab, activeView === tab && styles.activeTab]}
-//             onPress={() => setActiveView(tab as ViewType)}
-//             activeOpacity={0.7}
-//           >
-//             <Text style={[styles.tabText, activeView === tab && styles.activeTabText]}>
-//               {tab.charAt(0).toUpperCase() + tab.slice(1)}
-//             </Text>
-//           </TouchableOpacity>
-//         ))}
-//       </View>
-
-//       {/* Search and Add */}
-//       <View style={styles.actionContainer}>
-//         <View style={styles.searchBar}>
-//           <Text style={styles.searchIcon}>🔍</Text>
-//           <TextInput
-//             style={styles.searchInput}
-//             placeholder="Search..."
-//             value={searchQuery}
-//             onChangeText={setSearchQuery}
-//             placeholderTextColor={colors.secondary}
-//           />
-//           {searchQuery.length > 0 && (
-//             <TouchableOpacity onPress={() => setSearchQuery('')}>
-//               <Text style={styles.clearSearch}>✕</Text>
-//             </TouchableOpacity>
-//           )}
-//         </View>
-//         {activeView !== 'history' && (
-//           <TouchableOpacity
-//             style={styles.addButton}
-//             onPress={() => {
-//               setTransactionType(activeView === 'deposits' ? 'deposit' : 'withdrawal');
-//               setShowAddModal(true);
-//             }}
-//             activeOpacity={0.7}
-//           >
-//             <Text style={styles.addButtonText}>+ Add</Text>
-//           </TouchableOpacity>
-//         )}
-//       </View>
-
-//       {/* Transactions List */}
-//       <FlatList
-//         data={filteredTransactions}
-//         renderItem={renderTransaction}
-//         keyExtractor={(item) => item.id}
-//         contentContainerStyle={styles.listContent}
-//         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-//         ListEmptyComponent={
-//           <View style={styles.emptyState}>
-//             <Text style={styles.emptyEmoji}>📭</Text>
-//             <Text style={styles.emptyText}>No transactions found</Text>
-//           </View>
-//         }
-//       />
-
-//       {/* Add Transaction Modal */}
-//       <Modal
-//         visible={showAddModal}
-//         transparent
-//         animationType="slide"
-//         onRequestClose={() => {
-//           setShowAddModal(false);
-//           setSelectedMember(null);
-//           setAmount('');
-//           setNotes('');
-//           setReferenceNumber('');
-//         }}
-//       >
-//         <View style={styles.modalOverlay}>
-//           <View style={styles.modalContent}>
-//             <View style={styles.modalHeader}>
-//               <Text style={styles.modalTitle}>
-//                 Record {transactionType === 'deposit' ? 'Deposit' : 'Withdrawal'}
-//               </Text>
-//               <TouchableOpacity
-//                 onPress={() => {
-//                   setShowAddModal(false);
-//                   setSelectedMember(null);
-//                   setAmount('');
-//                   setNotes('');
-//                   setReferenceNumber('');
-//                 }}
-//                 activeOpacity={0.7}
-//               >
-//                 <Text style={styles.modalClose}>✕</Text>
-//               </TouchableOpacity>
-//             </View>
-
-//             <View style={styles.modalBody}>
-//               {/* Transaction Type Selector */}
-//               <View style={styles.typeSelector}>
-//                 <TouchableOpacity
-//                   style={[
-//                     styles.typeButton,
-//                     transactionType === 'deposit' && styles.selectedTypeButton,
-//                   ]}
-//                   onPress={() => setTransactionType('deposit')}
-//                   activeOpacity={0.7}
-//                 >
-//                   <Text style={[
-//                     styles.typeButtonText,
-//                     transactionType === 'deposit' && styles.selectedTypeText,
-//                   ]}>
-//                     💰 Deposit
-//                   </Text>
-//                 </TouchableOpacity>
-//                 <TouchableOpacity
-//                   style={[
-//                     styles.typeButton,
-//                     transactionType === 'withdrawal' && styles.selectedTypeButton,
-//                   ]}
-//                   onPress={() => setTransactionType('withdrawal')}
-//                   activeOpacity={0.7}
-//                 >
-//                   <Text style={[
-//                     styles.typeButtonText,
-//                     transactionType === 'withdrawal' && styles.selectedTypeText,
-//                   ]}>
-//                     💸 Withdrawal
-//                   </Text>
-//                 </TouchableOpacity>
-//               </View>
-
-//               {/* Member Selection */}
-//               <View style={styles.modalField}>
-//                 <Text style={styles.modalLabel}>Member *</Text>
-//                 <TouchableOpacity
-//                   style={styles.memberSelector}
-//                   onPress={() => setShowMemberSelector(true)}
-//                   activeOpacity={0.7}
-//                 >
-//                   <Text style={[styles.memberSelectorText, !selectedMember && styles.placeholderText]}>
-//                     {selectedMember?.full_name || 'Select a member'}
-//                   </Text>
-//                   <Text style={styles.memberSelectorArrow}>▼</Text>
-//                 </TouchableOpacity>
-//               </View>
-
-//               {/* Amount */}
-//               <View style={styles.modalField}>
-//                 <Text style={styles.modalLabel}>Amount (MK) *</Text>
-//                 <TextInput
-//                   style={styles.modalInput}
-//                   value={amount}
-//                   onChangeText={setAmount}
-//                   placeholder="Enter amount"
-//                   keyboardType="numeric"
-//                   placeholderTextColor={colors.secondary}
-//                 />
-//               </View>
-
-//               {/* Reference Number */}
-//               <View style={styles.modalField}>
-//                 <Text style={styles.modalLabel}>Reference Number</Text>
-//                 <TextInput
-//                   style={styles.modalInput}
-//                   value={referenceNumber}
-//                   onChangeText={setReferenceNumber}
-//                   placeholder="Enter reference number (optional)"
-//                   placeholderTextColor={colors.secondary}
-//                 />
-//               </View>
-
-//               {/* Notes */}
-//               <View style={styles.modalField}>
-//                 <Text style={styles.modalLabel}>Notes</Text>
-//                 <TextInput
-//                   style={[styles.modalInput, styles.modalTextArea]}
-//                   value={notes}
-//                   onChangeText={setNotes}
-//                   placeholder="Add notes (optional)"
-//                   placeholderTextColor={colors.secondary}
-//                   multiline
-//                   numberOfLines={3}
-//                   textAlignVertical="top"
-//                 />
-//               </View>
-
-//               <TouchableOpacity
-//                 style={[styles.submitButton, isSubmitting && styles.disabledButton]}
-//                 onPress={handleAddTransaction}
-//                 disabled={isSubmitting}
-//                 activeOpacity={0.7}
-//               >
-//                 {isSubmitting ? (
-//                   <ActivityIndicator color="#fff" size="small" />
-//                 ) : (
-//                   <Text style={styles.submitButtonText}>
-//                     Record {transactionType === 'deposit' ? 'Deposit' : 'Withdrawal'}
-//                   </Text>
-//                 )}
-//               </TouchableOpacity>
-//             </View>
-//           </View>
-//         </View>
-//       </Modal>
-
-//       {/* Member Selector Modal */}
-//       <Modal
-//         visible={showMemberSelector}
-//         transparent
-//         animationType="slide"
-//         onRequestClose={() => setShowMemberSelector(false)}
-//       >
-//         <View style={styles.modalOverlay}>
-//           <View style={styles.modalContent}>
-//             <View style={styles.modalHeader}>
-//               <Text style={styles.modalTitle}>Select Member</Text>
-//               <TouchableOpacity
-//                 onPress={() => setShowMemberSelector(false)}
-//                 activeOpacity={0.7}
-//               >
-//                 <Text style={styles.modalClose}>✕</Text>
-//               </TouchableOpacity>
-//             </View>
-//             <FlatList
-//               data={members}
-//               renderItem={renderMemberCard}
-//               keyExtractor={(item) => item.id}
-//               contentContainerStyle={styles.memberList}
-//             />
-//           </View>
-//         </View>
-//       </Modal>
-//     </SafeAreaView>
-//   );
-// }
-
-// // ==================== STYLES ====================
-// const styles = StyleSheet.create({
-//   container: {
-//     flex: 1,
-//     backgroundColor: colors.background,
-//   },
-//   centered: {
-//     flex: 1,
-//     justifyContent: 'center',
-//     alignItems: 'center',
-//     backgroundColor: colors.background,
-//   },
-//   headerContainer: {
-//     flexDirection: 'row',
-//     alignItems: 'center',
-//     justifyContent: 'space-between',
-//     paddingHorizontal: 16,
-//     paddingVertical: 16,
-//     backgroundColor: colors.primary,
-//   },
-//   backButton: {
-//     padding: 4,
-//   },
-//   headerTitle: {
-//     fontSize: 18,
-//     fontWeight: '700',
-//     color: '#FFFFFF',
-//   },
-//   headerSpacer: {
-//     width: 40,
-//   },
-//   subtitleContainer: {
-//     paddingHorizontal: 20,
-//     paddingTop: 8,
-//     paddingBottom: 12,
-//   },
-//   subtitle: {
-//     fontSize: 14,
-//     color: colors.secondary,
-//   },
-//   summaryContainer: {
-//     flexDirection: 'row',
-//     paddingHorizontal: 20,
-//     gap: 8,
-//     marginBottom: 16,
-//   },
-//   summaryCard: {
-//     flex: 1,
-//     padding: 12,
-//     borderRadius: 8,
-//     alignItems: 'center',
-//     borderWidth: 1,
-//   },
-//   depositSummary: {
-//     backgroundColor: '#d1fae5',
-//     borderColor: '#a7f3d0',
-//   },
-//   withdrawalSummary: {
-//     backgroundColor: '#fee2e2',
-//     borderColor: '#fecaca',
-//   },
-//   balanceSummary: {
-//     backgroundColor: '#dbeafe',
-//     borderColor: '#bfdbfe',
-//   },
-//   summaryLabel: {
-//     fontSize: 10,
-//     color: colors.secondary,
-//     textTransform: 'uppercase',
-//     fontWeight: '600',
-//   },
-//   summaryValue: {
-//     fontSize: 14,
-//     fontWeight: 'bold',
-//     marginTop: 2,
-//   },
-//   depositAmount: {
-//     color: '#059669',
-//   },
-//   withdrawalAmount: {
-//     color: '#dc2626',
-//   },
-//   balanceAmount: {
-//     color: '#1d4ed8',
-//   },
-//   tabContainer: {
-//     flexDirection: 'row',
-//     paddingHorizontal: 20,
-//     marginBottom: 12,
-//     borderBottomWidth: 1,
-//     borderBottomColor: colors.border,
-//   },
-//   tab: {
-//     paddingVertical: 12,
-//     paddingHorizontal: 16,
-//     marginRight: 8,
-//   },
-//   activeTab: {
-//     borderBottomWidth: 2,
-//     borderBottomColor: colors.primary,
-//   },
-//   tabText: {
-//     fontSize: 14,
-//     color: colors.secondary,
-//   },
-//   activeTabText: {
-//     color: colors.primary,
-//     fontWeight: '600',
-//   },
-//   actionContainer: {
-//     flexDirection: 'row',
-//     paddingHorizontal: 20,
-//     gap: 8,
-//     marginBottom: 12,
-//   },
-//   searchBar: {
-//     flex: 1,
-//     flexDirection: 'row',
-//     alignItems: 'center',
-//     backgroundColor: colors.surface,
-//     borderRadius: 8,
-//     paddingHorizontal: 12,
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//   },
-//   searchIcon: {
-//     fontSize: 16,
-//     marginRight: 8,
-//   },
-//   searchInput: {
-//     flex: 1,
-//     paddingVertical: 10,
-//     fontSize: 16,
-//     color: colors.text,
-//   },
-//   clearSearch: {
-//     padding: 4,
-//     fontSize: 16,
-//     color: colors.secondary,
-//   },
-//   addButton: {
-//     backgroundColor: colors.primary,
-//     paddingHorizontal: 16,
-//     paddingVertical: 10,
-//     borderRadius: 8,
-//     justifyContent: 'center',
-//     alignItems: 'center',
-//   },
-//   addButtonText: {
-//     color: '#fff',
-//     fontSize: 14,
-//     fontWeight: '600',
-//   },
-//   listContent: {
-//     padding: 20,
-//     paddingBottom: 40,
-//   },
-//   transactionCard: {
-//     backgroundColor: colors.surface,
-//     borderRadius: 8,
-//     padding: 12,
-//     marginBottom: 8,
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//   },
-//   transactionHeader: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     alignItems: 'center',
-//   },
-//   transactionLeft: {
-//     flexDirection: 'row',
-//     alignItems: 'center',
-//     flex: 1,
-//   },
-//   transactionIcon: {
-//     width: 36,
-//     height: 36,
-//     borderRadius: 18,
-//     alignItems: 'center',
-//     justifyContent: 'center',
-//     marginRight: 10,
-//   },
-//   depositIcon: {
-//     backgroundColor: '#d1fae5',
-//   },
-//   withdrawalIcon: {
-//     backgroundColor: '#fee2e2',
-//   },
-//   transactionIconText: {
-//     fontSize: 16,
-//   },
-//   transactionMember: {
-//     fontSize: 14,
-//     fontWeight: '500',
-//     color: colors.text,
-//   },
-//   transactionDate: {
-//     fontSize: 11,
-//     color: colors.secondary,
-//     marginTop: 2,
-//   },
-//   transactionRight: {
-//     alignItems: 'flex-end',
-//   },
-//   transactionAmount: {
-//     fontSize: 14,
-//     fontWeight: '600',
-//   },
-//   transactionNotes: {
-//     fontSize: 12,
-//     color: colors.secondary,
-//     marginTop: 4,
-//     marginLeft: 46,
-//   },
-//   emptyState: {
-//     alignItems: 'center',
-//     paddingVertical: 40,
-//   },
-//   emptyEmoji: {
-//     fontSize: 48,
-//     marginBottom: 12,
-//   },
-//   emptyText: {
-//     fontSize: 16,
-//     fontWeight: '600',
-//     color: colors.text,
-//   },
-//   modalOverlay: {
-//     flex: 1,
-//     backgroundColor: 'rgba(0,0,0,0.5)',
-//     justifyContent: 'center',
-//     alignItems: 'center',
-//     padding: 20,
-//   },
-//   modalContent: {
-//     backgroundColor: colors.surface,
-//     borderRadius: 16,
-//     padding: 20,
-//     width: '100%',
-//     maxWidth: 400,
-//     maxHeight: '90%',
-//   },
-//   modalHeader: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     alignItems: 'center',
-//     marginBottom: 16,
-//     paddingBottom: 12,
-//     borderBottomWidth: 1,
-//     borderBottomColor: colors.border,
-//   },
-//   modalTitle: {
-//     fontSize: 18,
-//     fontWeight: 'bold',
-//     color: colors.text,
-//   },
-//   modalClose: {
-//     fontSize: 20,
-//     color: colors.secondary,
-//     padding: 4,
-//   },
-//   modalBody: {
-//     gap: 12,
-//   },
-//   typeSelector: {
-//     flexDirection: 'row',
-//     gap: 8,
-//   },
-//   typeButton: {
-//     flex: 1,
-//     padding: 10,
-//     borderRadius: 8,
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//     alignItems: 'center',
-//     backgroundColor: colors.background,
-//   },
-//   selectedTypeButton: {
-//     backgroundColor: colors.primary,
-//     borderColor: colors.primary,
-//   },
-//   typeButtonText: {
-//     fontSize: 14,
-//     color: colors.text,
-//     fontWeight: '500',
-//   },
-//   selectedTypeText: {
-//     color: '#fff',
-//   },
-//   modalField: {
-//     gap: 4,
-//   },
-//   modalLabel: {
-//     fontSize: 14,
-//     fontWeight: '500',
-//     color: colors.text,
-//   },
-//   modalInput: {
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//     borderRadius: 8,
-//     padding: 12,
-//     fontSize: 16,
-//     color: colors.text,
-//     backgroundColor: colors.background,
-//   },
-//   modalTextArea: {
-//     minHeight: 80,
-//     textAlignVertical: 'top',
-//   },
-//   memberSelector: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     alignItems: 'center',
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//     borderRadius: 8,
-//     padding: 12,
-//     backgroundColor: colors.background,
-//   },
-//   memberSelectorText: {
-//     fontSize: 16,
-//     color: colors.text,
-//   },
-//   placeholderText: {
-//     color: colors.secondary,
-//   },
-//   memberSelectorArrow: {
-//     fontSize: 16,
-//     color: colors.secondary,
-//   },
-//   submitButton: {
-//     backgroundColor: colors.primary,
-//     padding: 14,
-//     borderRadius: 8,
-//     alignItems: 'center',
-//     marginTop: 4,
-//   },
-//   disabledButton: {
-//     opacity: 0.6,
-//   },
-//   submitButtonText: {
-//     color: '#fff',
-//     fontSize: 16,
-//     fontWeight: '600',
-//   },
-//   memberList: {
-//     gap: 8,
-//   },
-//   memberCard: {
-//     padding: 12,
-//     borderRadius: 8,
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//     backgroundColor: colors.background,
-//   },
-//   selectedMemberCard: {
-//     borderColor: colors.primary,
-//     backgroundColor: colors.primary + '15',
-//   },
-//   memberCardName: {
-//     fontSize: 16,
-//     fontWeight: '500',
-//     color: colors.text,
-//   },
-//   memberCardPhone: {
-//     fontSize: 12,
-//     color: colors.secondary,
-//     marginTop: 2,
-//   },
-// });
-
-
-
-
-
-
-// src/screens/SavingsScreen.tsx - COMPLETE FIXED WITH DATA PERSISTENCE
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -981,14 +12,13 @@ import {
   FlatList,
   Modal,
   RefreshControl,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { colors } from '../theme/colors';
 import { groupAPI, ledgerAPI } from '../api/endpoints';
-import { useAuth } from '../auth/AuthContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Member {
   id: string;
@@ -1010,9 +40,18 @@ interface SavingTransaction {
 
 type ViewType = 'deposits' | 'withdrawals' | 'history' | 'social' | 'statement';
 
+// Reference numbers are generated automatically, e.g. DEP-20261012-K3F9QX
+type RefPrefix = 'DEP' | 'WTH' | 'SOC';
+
+const generateReference = (prefix: RefPrefix): string => {
+  const d = new Date();
+  const date = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `${prefix}-${date}-${rand}`;
+};
+
 export function SavingsScreen() {
   const navigation = useNavigation();
-  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeView, setActiveView] = useState<ViewType>('deposits');
@@ -1025,37 +64,29 @@ export function SavingsScreen() {
   const [transactionType, setTransactionType] = useState<'deposit' | 'withdrawal'>('deposit');
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
-  const [referenceNumber, setReferenceNumber] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [totalDeposits, setTotalDeposits] = useState(0);
   const [totalWithdrawals, setTotalWithdrawals] = useState(0);
   const [totalSocial, setTotalSocial] = useState(0);
   const [balance, setBalance] = useState(0);
-  
-  // Social Contribution state
+
   const [socialMember, setSocialMember] = useState<Member | null>(null);
   const [socialAmount, setSocialAmount] = useState('');
   const [socialDescription, setSocialDescription] = useState('');
-  const [socialReference, setSocialReference] = useState('');
   const [showSocialMemberSelector, setShowSocialMemberSelector] = useState(false);
   const [submittingSocial, setSubmittingSocial] = useState(false);
   const [socialSubView, setSocialSubView] = useState<'list' | 'detail'>('list');
   const [socialSelectedMember, setSocialSelectedMember] = useState<Member | null>(null);
   const [showSocialHistoryModal, setShowSocialHistoryModal] = useState(false);
   const [groupSocialMax, setGroupSocialMax] = useState<number>(0);
-  
-  // Member statement state
   const [selectedMemberForStatement, setSelectedMemberForStatement] = useState<Member | null>(null);
   const [memberTransactions, setMemberTransactions] = useState<SavingTransaction[]>([]);
   const [showStatementModal, setShowStatementModal] = useState(false);
-  
-  // Refs for tracking
+
   const isFirstLoad = useRef(true);
   const isDataLoaded = useRef(false);
 
-  // ==================== LOAD GROUP AND DATA ====================
-  
   const loadGroupAndData = useCallback(async () => {
     try {
       if (isFirstLoad.current) setLoading(true);
@@ -1067,7 +98,7 @@ export function SavingsScreen() {
       if (results.length > 0) {
         const group = results[0];
         setGroupId(group.id);
-        setGroupSocialMax(parseFloat(group.social_max_contribution) || 0); // ← add this
+        setGroupSocialMax(parseFloat(group.social_max_contribution) || 0);
         await loadMembers(group.id);
         await loadSavingsData(group.id);
         isDataLoaded.current = true;
@@ -1103,15 +134,15 @@ export function SavingsScreen() {
   const loadSavingsData = async (groupIdParam?: string) => {
     try {
       const groupIdToUse = groupIdParam || groupId;
-      
+
       if (!groupIdToUse) {
         console.log('⚠️ No groupId available, skipping load');
         return;
       }
-      
+
       console.log('📡 Fetching ledger entries for savings...');
       const response = await ledgerAPI.getEntries(groupIdToUse);
-      
+
       let allEntries = [];
       if (Array.isArray(response.data)) {
         allEntries = response.data;
@@ -1120,7 +151,7 @@ export function SavingsScreen() {
       } else {
         allEntries = response.data || [];
       }
-      
+
       if (allEntries.length === 0) {
         setSavings([]);
         setTotalDeposits(0);
@@ -1129,7 +160,7 @@ export function SavingsScreen() {
         setBalance(0);
         return;
       }
-      
+
       const transactions: SavingTransaction[] = allEntries.map((s: any) => {
         let memberName = 'Unknown Member';
         if (s.member_name) {
@@ -1139,18 +170,18 @@ export function SavingsScreen() {
         } else if (s.member && typeof s.member === 'object') {
           memberName = s.member.full_name || 'Unknown Member';
         }
-        
+
         let memberId = s.member || s.member_id || '';
         if (typeof memberId === 'object' && memberId.id) {
           memberId = memberId.id;
         }
-        
+
         const amount = parseFloat(s.amount) || 0;
         let transactionType: 'deposit' | 'withdrawal' = 'deposit';
         if (s.transaction_type === 'withdrawal' || s.transaction_type === 'withdraw') {
           transactionType = 'withdrawal';
         }
-        
+
         return {
           id: s.id || `txn_${Date.now()}_${Math.random()}`,
           member_id: memberId,
@@ -1163,63 +194,53 @@ export function SavingsScreen() {
           recorded_by: s.recorded_by || '',
         };
       });
-      
+
       transactions.sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
       setSavings(transactions);
-      
+
       const deposits = transactions.filter(t => t.transaction_type === 'deposit');
       const withdrawals = transactions.filter(t => t.transaction_type === 'withdrawal');
-      
-      const socialTxns = transactions.filter(t => 
+
+      const socialTxns = transactions.filter(t =>
         t.notes && (t.notes.includes('SOCIAL:') || t.notes.toLowerCase().includes('social'))
       );
-      
+
       const totalDep = deposits.reduce((sum, t) => sum + t.amount, 0);
       const totalWith = withdrawals.reduce((sum, t) => sum + t.amount, 0);
       const totalSoc = socialTxns.reduce((sum, t) => sum + t.amount, 0);
-      
+
       setTotalDeposits(totalDep);
       setTotalWithdrawals(totalWith);
       setTotalSocial(totalSoc);
       setBalance(totalDep - totalWith);
-      
+
       console.log('✅ Savings data loaded:', {
         transactions: transactions.length,
         deposits: totalDep,
         withdrawals: totalWith,
         social: totalSoc,
-        balance: totalDep - totalWith
+        balance: totalDep - totalWith,
       });
-      
     } catch (error) {
       console.error('❌ Failed to load savings data:', error);
       setSavings([]);
     }
   };
 
-  // ==================== INITIAL LOAD ====================
-  
   useEffect(() => {
     loadGroupAndData();
   }, []);
 
-  // ==================== FOCUS EFFECT - RELOAD DATA ====================
-  
   useFocusEffect(
     useCallback(() => {
-      // Only reload if data has been loaded before
       if (isDataLoaded.current && groupId) {
         console.log('📡 Refreshing data on focus...');
         loadSavingsData(groupId);
       }
-      return () => {
-        // Cleanup if needed
-      };
+      return () => {};
     }, [groupId])
   );
 
-  // ==================== REFRESH HANDLER ====================
-  
   const onRefresh = async () => {
     setRefreshing(true);
     if (groupId) {
@@ -1230,10 +251,10 @@ export function SavingsScreen() {
     setRefreshing(false);
   };
 
-  // ==================== SOCIAL CONTRIBUTION HANDLER ====================
-  
-  const handleSocialContribution = async () => {
-    if (!socialMember) {
+  // The member is passed in directly: calling setSocialMember() and then reading
+  // socialMember in the same tick would still see the old (null) value.
+  const handleSocialContribution = async (member: Member | null) => {
+    if (!member) {
       Alert.alert('Error', 'Please select a member');
       return;
     }
@@ -1259,27 +280,25 @@ export function SavingsScreen() {
       const data = {
         transaction_type: 'social_contribution',
         amount: amountValue,
-        member: socialMember.id,
+        member: member.id,
         description: `SOCIAL: ${socialDescription.trim()}`,
-        reference_number: socialReference.trim() || `SOC${Date.now()}`,
+        reference_number: generateReference('SOC'),
       };
 
       console.log('📤 Sending social contribution to ledger:', JSON.stringify(data, null, 2));
 
       const response = await ledgerAPI.addEntry(groupId, data);
       console.log('📥 Response:', response.data);
-      
+
       Alert.alert(
-        '✅ Success', 
-        `Social contribution of MK${amountValue.toLocaleString()} recorded for ${socialMember.full_name}!`
+        '✅ Success',
+        `Social contribution of MK${amountValue.toLocaleString()} recorded for ${member.full_name}!`
       );
-      
+
       setSocialMember(null);
       setSocialAmount('');
       setSocialDescription('');
-      setSocialReference('');
-      
-      // Reload data after successful save
+
       await loadSavingsData(groupId);
     } catch (error: any) {
       console.error('❌ Failed to save social contribution:', error);
@@ -1290,8 +309,6 @@ export function SavingsScreen() {
     }
   };
 
-  // ==================== REGULAR TRANSACTION HANDLER ====================
-  
   const handleAddTransaction = async () => {
     if (!selectedMember) {
       Alert.alert('Error', 'Please select a member');
@@ -1321,26 +338,24 @@ export function SavingsScreen() {
         amount: amountValue,
         member: selectedMember.id,
         description: notes || `${transactionType === 'deposit' ? 'Deposit' : 'Withdrawal'} for ${selectedMember.full_name}`,
-        reference_number: referenceNumber || `TXN${Date.now()}`,
+        reference_number: generateReference(transactionType === 'deposit' ? 'DEP' : 'WTH'),
       };
 
       console.log('📤 Sending transaction to ledger:', JSON.stringify(data, null, 2));
 
       const response = await ledgerAPI.addEntry(groupId, data);
       console.log('📥 Response:', response.data);
-      
+
       Alert.alert(
-        '✅ Success', 
+        '✅ Success',
         `${transactionType === 'deposit' ? 'Deposit' : 'Withdrawal'} of MK${amountValue.toLocaleString()} recorded for ${selectedMember.full_name}!`
       );
-      
+
       setShowAddModal(false);
       setSelectedMember(null);
       setAmount('');
       setNotes('');
-      setReferenceNumber('');
-      
-      // Reload data after successful save
+
       await loadSavingsData(groupId);
     } catch (error: any) {
       console.error('❌ Failed to save transaction:', error);
@@ -1351,8 +366,6 @@ export function SavingsScreen() {
     }
   };
 
-  // ==================== MEMBER STATEMENT FUNCTIONS ====================
-  
   const loadMemberStatement = (member: Member) => {
     const memberTxns = savings.filter(t => t.member_id === member.id);
     memberTxns.sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
@@ -1392,7 +405,7 @@ export function SavingsScreen() {
   const filterTransactions = (transactions: SavingTransaction[]) => {
     if (!searchQuery) return transactions;
     const query = searchQuery.toLowerCase();
-    return transactions.filter(t => 
+    return transactions.filter(t =>
       t.member_name.toLowerCase().includes(query) ||
       t.notes?.toLowerCase().includes(query) ||
       t.reference_number?.toLowerCase().includes(query)
@@ -1411,17 +424,15 @@ export function SavingsScreen() {
     return filterTransactions(filtered);
   };
 
-  // ==================== RENDER FUNCTIONS ====================
-  
   const renderTransaction = ({ item }: { item: SavingTransaction }) => {
     const isDeposit = item.transaction_type === 'deposit';
     const isSocial = item.notes && item.notes.includes('SOCIAL:');
-    
+
     let icon = '💰';
     let amountStyle = styles.depositAmount;
     let prefix = '+';
     let bgColor = '#d1fae5';
-    
+
     if (!isDeposit) {
       icon = '💸';
       amountStyle = styles.withdrawalAmount;
@@ -1433,7 +444,7 @@ export function SavingsScreen() {
       prefix = '+';
       bgColor = '#fef3c7';
     }
-    
+
     return (
       <View style={styles.transactionCard}>
         <View style={styles.transactionHeader}>
@@ -1493,10 +504,7 @@ export function SavingsScreen() {
 
   const renderMemberForStatement = ({ item }: { item: Member }) => {
     const memberBalance = getMemberBalance(item.id);
-    const memberTotalDeposits = getMemberTotalDeposits(item.id);
-    const memberTotalWithdrawals = getMemberTotalWithdrawals(item.id);
-    const memberTotalSocial = getMemberTotalSocial(item.id);
-    
+
     return (
       <TouchableOpacity
         style={styles.statementMemberCard}
@@ -1530,13 +538,13 @@ export function SavingsScreen() {
   const renderStatementTransaction = ({ item }: { item: SavingTransaction }) => {
     const isDeposit = item.transaction_type === 'deposit';
     const isSocial = item.notes && item.notes.includes('SOCIAL:');
-    
+
     let icon = '💰';
     let amountStyle = styles.depositAmount;
     let prefix = '+';
     let bgColor = '#d1fae5';
     let label = 'Deposit';
-    
+
     if (!isDeposit) {
       icon = '💸';
       amountStyle = styles.withdrawalAmount;
@@ -1550,7 +558,7 @@ export function SavingsScreen() {
       bgColor = '#fef3c7';
       label = 'Social';
     }
-    
+
     return (
       <View style={styles.statementTransactionCard}>
         <View style={styles.statementTransactionLeft}>
@@ -1590,7 +598,6 @@ export function SavingsScreen() {
 
   const filteredTransactions = getFilteredTransactions();
 
-  // ==================== RENDER SOCIAL CONTRIBUTION VIEW ====================
   if (activeView === 'social') {
     const memberSocialTotal = socialSelectedMember ? getMemberTotalSocial(socialSelectedMember.id) : 0;
     const memberSocialBalance = groupSocialMax - memberSocialTotal;
@@ -1750,24 +757,11 @@ export function SavingsScreen() {
                 <Text style={styles.socialHint}>Cash payment only</Text>
               </View>
 
-              <View style={styles.socialField}>
-                <Text style={styles.socialLabel}>Reference Number</Text>
-                <TextInput
-                  style={styles.socialInput}
-                  value={socialReference}
-                  onChangeText={setSocialReference}
-                  placeholder="Enter reference number (optional)"
-                  placeholderTextColor={colors.secondary}
-                />
-              </View>
+              <Text style={styles.socialHint}>Reference number is generated automatically</Text>
 
               <TouchableOpacity
                 style={[styles.socialSubmitButton, submittingSocial && styles.socialSubmitDisabled]}
-                onPress={async () => {
-                  if (!socialSelectedMember) return;
-                  setSocialMember(socialSelectedMember);
-                  await handleSocialContribution();
-                }}
+                onPress={() => handleSocialContribution(socialSelectedMember)}
                 disabled={submittingSocial}
                 activeOpacity={0.7}
               >
@@ -1784,7 +778,6 @@ export function SavingsScreen() {
           </ScrollView>
         )}
 
-        {/* Member's Social Transaction History Modal */}
         <Modal
           visible={showSocialHistoryModal}
           transparent
@@ -1837,7 +830,6 @@ export function SavingsScreen() {
     );
   }
 
-  // ==================== RENDER STATEMENT VIEW ====================
   if (activeView === 'statement') {
     return (
       <SafeAreaView style={styles.container}>
@@ -1972,7 +964,6 @@ export function SavingsScreen() {
     );
   }
 
-  // ==================== MAIN VIEW ====================
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerContainer}>
@@ -2099,7 +1090,6 @@ export function SavingsScreen() {
         }
       />
 
-      {/* Add Transaction Modal */}
       <Modal
         visible={showAddModal}
         transparent
@@ -2109,10 +1099,12 @@ export function SavingsScreen() {
           setSelectedMember(null);
           setAmount('');
           setNotes('');
-          setReferenceNumber('');
         }}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
@@ -2124,7 +1116,6 @@ export function SavingsScreen() {
                   setSelectedMember(null);
                   setAmount('');
                   setNotes('');
-                  setReferenceNumber('');
                 }}
                 activeOpacity={0.7}
               >
@@ -2132,7 +1123,11 @@ export function SavingsScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.modalBody}>
+            <ScrollView
+              contentContainerStyle={styles.modalBody}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <View style={styles.typeSelector}>
                 <TouchableOpacity
                   style={[
@@ -2146,7 +1141,7 @@ export function SavingsScreen() {
                     styles.typeButtonText,
                     transactionType === 'deposit' && styles.selectedTypeText,
                   ]}>
-                    💰 Deposit
+                    💰 Deposit/Share's
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -2193,17 +1188,6 @@ export function SavingsScreen() {
               </View>
 
               <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>Reference Number</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={referenceNumber}
-                  onChangeText={setReferenceNumber}
-                  placeholder="Enter reference number (optional)"
-                  placeholderTextColor={colors.secondary}
-                />
-              </View>
-
-              <View style={styles.modalField}>
                 <Text style={styles.modalLabel}>Notes</Text>
                 <TextInput
                   style={[styles.modalInput, styles.modalTextArea]}
@@ -2216,6 +1200,8 @@ export function SavingsScreen() {
                   textAlignVertical="top"
                 />
               </View>
+
+              <Text style={styles.socialHint}>Reference number is generated automatically</Text>
 
               <TouchableOpacity
                 style={[styles.submitButton, isSubmitting && styles.disabledButton]}
@@ -2231,12 +1217,11 @@ export function SavingsScreen() {
                   </Text>
                 )}
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Member Selector Modal */}
       <Modal
         visible={showMemberSelector}
         transparent
@@ -2267,7 +1252,6 @@ export function SavingsScreen() {
   );
 }
 
-// ==================== STYLES ====================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -2419,7 +1403,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.text,
   },
-    socialTapHint: {
+  socialTapHint: {
     fontSize: 11,
     color: colors.secondary,
     textAlign: 'center',
@@ -2586,6 +1570,7 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     gap: 12,
+    paddingBottom: 8,
   },
   typeSelector: {
     flexDirection: 'row',
@@ -2694,7 +1679,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // ==================== SOCIAL CONTRIBUTION STYLES ====================
   socialFormContainer: {
     padding: 16,
     paddingBottom: 40,
@@ -2927,7 +1911,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // ==================== STATEMENT STYLES ====================
   statementSummaryContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,

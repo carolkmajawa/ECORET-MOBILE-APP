@@ -1,11 +1,6 @@
-// src/api/endpoints.ts - RESTORED WORKING VERSION
 import axios, { AxiosResponse } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config';
-// import api from './client';
-// import { ENDPOINTS } from './endpoints';
-// import { extractList } from './listUtils';
-
 
 export const BASE_URL = API_BASE_URL;
 
@@ -105,17 +100,11 @@ export const ENDPOINTS = {
   },
 };
 
-// Create axios instance
 const api = axios.create({
   baseURL: BASE_URL,
 });
 
-// ==================== MULTIPART UPLOAD HELPER ====================
-// axios's FormData detection can be unreliable in RN Web / Expo web builds,
-// silently falling back to JSON-stringifying the body instead of sending
-// multipart data. fetch() has no such ambiguity - it always sets the correct
-// multipart Content-Type + boundary when body is a real FormData instance.
-async function uploadFormData(path: string, method: 'POST' | 'PATCH', formData: FormData, isRetry = false): Promise<{ data: any }> {
+async function uploadFormData(path: string, method: 'POST' | 'PATCH', formData: FormData, isRetry = false): Promise<AxiosResponse<any>> {
   const token = await AsyncStorage.getItem('access_token');
 
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -130,18 +119,15 @@ async function uploadFormData(path: string, method: 'POST' | 'PATCH', formData: 
   try {
     data = await response.json();
   } catch {
-    // no JSON body
   }
 
   if (response.status === 401 && !isRetry) {
-    // Access token expired — try the same refresh flow the axios interceptor uses
     try {
       const refreshToken = await AsyncStorage.getItem('refresh_token');
       const refreshResponse = await axios.post(`${BASE_URL}${ENDPOINTS.auth.tokenRefresh}`, {
         refresh: refreshToken,
       });
       await AsyncStorage.setItem('access_token', refreshResponse.data.access);
-      // Retry the upload once with the new token
       return uploadFormData(path, method, formData, true);
     } catch (refreshError) {
       await AsyncStorage.removeItem('access_token');
@@ -159,10 +145,15 @@ async function uploadFormData(path: string, method: 'POST' | 'PATCH', formData: 
     throw error;
   }
 
-  return { data };
+  return {
+    data,
+    status: response.status,
+    statusText: response.statusText,
+    headers: Object.fromEntries(response.headers.entries()),
+    config: { url: path, method } as any,
+  };
 }
 
-// Request interceptor for adding token
 api.interceptors.request.use(
   async (config) => {
     const token = await AsyncStorage.getItem('access_token');
@@ -174,7 +165,6 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// Response interceptor for handling token refresh
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -201,12 +191,6 @@ api.interceptors.response.use(
   },
 );
 
-// ==================== PAGINATION HELPER ====================
-// DRF's default pagination caps each response at PAGE_SIZE items and puts
-// the rest behind a `next` URL. Reading only `response.data.results` from
-// a single call silently drops everything past page 1 - this was why an
-// already-active ECORET loan sitting on page 2 never showed up on the
-// ECORET tab. This follows `next` until exhausted and returns everything.
 async function fetchAllPages<T = any>(url: string, params?: any): Promise<T[]> {
   const allResults: T[] = [];
   let nextUrl: string | null = url;
@@ -235,7 +219,6 @@ async function fetchAllPages<T = any>(url: string, params?: any): Promise<T[]> {
   return allResults;
 }
 
-// ==================== AUTH API ====================
 export const authAPI = {
   login: (email: string, password: string) => api.post(ENDPOINTS.auth.login, { email, password }),
   
@@ -258,7 +241,6 @@ export const authAPI = {
   registerDevice: (deviceData: any) => api.post(ENDPOINTS.auth.registerDevice, deviceData),
 };
 
-// ==================== GROUPS API ====================
 export const groupAPI = {
   getGroups: () => api.get('/groups/'),
   createGroup: (data: any) => api.post('/groups/', data),
@@ -320,7 +302,6 @@ export const groupAPI = {
   addLedgerCategory: (groupId: string, data: any) => api.post(`/groups/${groupId}/add_ledger_category/`, data),
 };
 
-// ==================== LOANS API ====================
 interface LoanAPI {
   getLoans: () => Promise<AxiosResponse>;
   getAllLoans: () => Promise<any[]>;
@@ -336,6 +317,7 @@ interface LoanAPI {
   getLoanBalance: (id: string) => Promise<AxiosResponse>;
   getLoanRequests: () => Promise<AxiosResponse>;
   createLoanRequest: (data: any) => Promise<AxiosResponse>;
+  createLoanRequestMultipart: (data: FormData) => Promise<AxiosResponse>;
   getLoanRepayments: (id: string) => Promise<AxiosResponse>;
   getMemberBankDetails: (id: string) => Promise<AxiosResponse>;
   chairmanDisburseCash: (id: string, data: any) => Promise<AxiosResponse>;
@@ -350,8 +332,6 @@ interface LoanAPI {
 
 export const loanAPI: LoanAPI = {
   getLoans: () => api.get(ENDPOINTS.loans.list),
-  // Use this anywhere you need the COMPLETE loan list (e.g. finding "the"
-  // ECORET loan for a group) - getLoans() only returns page 1.
   getAllLoans: () => fetchAllPages(ENDPOINTS.loans.list),
   getLoansFiltered: (params: any) => api.get(ENDPOINTS.loans.list, { params }),
   getAllLoansFiltered: (params: any) => fetchAllPages(ENDPOINTS.loans.list, params),
@@ -407,14 +387,12 @@ export const loanAPI: LoanAPI = {
   updateLoanSettings: (id: string, data: any) => api.patch(`/loan-settings/${id}/update_settings/`, data),
 };
 
-// ==================== SAVINGS API ====================
 export const savingsAPI = {
   getSavings: () => api.get('/savings/'),
   createSaving: (data: any) => api.post('/savings/', data),
   getMemberSavings: (memberId: string) => api.get(`/savings/member/${memberId}/`),
 };
 
-// ==================== ATTENDANCE API ====================
 export const attendanceAPI = {
   getAttendance: () => api.get(ENDPOINTS.attendance.list),
   createAttendance: (data: any) => api.post(ENDPOINTS.attendance.list, data),
@@ -442,7 +420,6 @@ export const attendanceAPI = {
   getMemberCases: (memberId: string) => api.get(`/attendance-cases/member/${memberId}/`),
 };
 
-// ==================== NOTIFICATIONS API ====================
 export const notificationAPI = {
   getNotifications: () => api.get(ENDPOINTS.notifications.list),
   getUnreadCount: () => api.get(ENDPOINTS.notifications.unreadCount),
@@ -453,14 +430,12 @@ export const notificationAPI = {
   sendNotification: (data: any) => api.post(ENDPOINTS.notifications.send, data),
 };
 
-// ==================== SYNC API ====================
 export const syncAPI = {
   syncPull: () => api.get(ENDPOINTS.sync.pull),
   syncPush: (data: any) => api.post(ENDPOINTS.sync.push, data),
   getSyncStatus: () => api.get(ENDPOINTS.sync.status),
 };
 
-// ==================== LEDGER API (Separate) ====================
 export const ledgerAPI = {
   getEntries: (groupId: string, params?: any) => api.get(`/groups/${groupId}/ledger_entries/`, { params }),
   addEntry: (groupId: string, data: any) => api.post(`/groups/${groupId}/add_ledger_entry/`, data),
@@ -514,22 +489,16 @@ export interface GenerateReportRequest {
 }
 
 export const reportAPI = {
-  // Get all reports
   getReports: () => api.get(ENDPOINTS.reports.list),
   
-  // Get pending reports
   getPendingReports: () => api.get(ENDPOINTS.reports.pending),
   
-  // Generate a new report
   generateReport: (data: GenerateReportRequest) => api.post(ENDPOINTS.reports.generate, data),
   
-  // Get a single report
   getReport: (id: string) => api.get(ENDPOINTS.reports.detail(id)),
   
-  // Download a report
   downloadReport: (id: string) => api.get(ENDPOINTS.reports.download(id), { responseType: 'blob' }),
   
-  // Regenerate a report
   regenerateReport: (id: string) => api.post(ENDPOINTS.reports.regenerate(id)),
   deleteReport: (id: string) => api.delete(ENDPOINTS.reports.detail(id)),
 };

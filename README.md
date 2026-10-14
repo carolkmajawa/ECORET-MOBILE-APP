@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ECORET Chairman App
 
 React Native (Expo) + TypeScript, offline-first, talking to your
@@ -73,3 +74,6 @@ Not yet built: loan approval screen, repayment recording, attendance
 marking, case penalty payment, push notification handling (device
 token registration hook exists in `endpoints.ts` as
 `auth.registerDevice` but isn't called anywhere yet).
+=======
+# ECORET-MOBILE-APP
+>>>>>>> 79a1cca3f777297c0783b57663edb3e2173533fe

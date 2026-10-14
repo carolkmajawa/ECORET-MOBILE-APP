@@ -6,7 +6,7 @@ export function SplashScreen({ navigation }: any) {
     <View style={styles.container}>
       <View style={styles.brandBlock}>
         <Text style={styles.title}>ECORET</Text>
-        <Text style={styles.subtitle}>Village savings & loans, simplified.</Text>
+        <Text style={styles.subtitle}>Transforming People's Lives.</Text>
       </View>
 
       <View style={styles.footer}>

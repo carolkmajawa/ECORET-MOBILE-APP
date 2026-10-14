@@ -1,5 +1,3 @@
-// src/screens/ReportGenerationScreen.tsx - Keep generating/failed here
-
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -48,6 +46,15 @@ const FORMAT_OPTIONS = [
   { id: 'both', label: 'Both', icon: 'documents-outline' },
 ];
 
+// Alert.alert does nothing on react-native-web, so use window.alert there.
+const notify = (title: string, message: string) => {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+};
+
 export default function ReportGenerationScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,16 +63,13 @@ export default function ReportGenerationScreen({ navigation }: any) {
   const [groups, setGroups] = useState<any[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [groupName, setGroupName] = useState<string>('');
-  
-  // Report Options
   const [period, setPeriod] = useState<ReportPeriod>('this_cycle');
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [endDate, setEndDate] = useState<Date>(new Date());
   const [includeMembers, setIncludeMembers] = useState<string[]>([]);
   const [includeSections, setIncludeSections] = useState<string[]>(SECTIONS.map(s => s.id));
   const [reportFormat, setReportFormat] = useState<'pdf' | 'excel' | 'both'>('pdf');
-  
-  // UI State
+
   const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
   const [showSectionSelector, setShowSectionSelector] = useState(false);
   const [showFormatSelector, setShowFormatSelector] = useState(false);
@@ -75,15 +79,23 @@ export default function ReportGenerationScreen({ navigation }: any) {
     loadData();
   }, []);
 
+  // While any report is still generating, re-check every 3 seconds.
+  // Stops by itself once nothing is generating.
+  useEffect(() => {
+    if (!selectedGroup || !reports.some((r) => r.status === 'generating')) return;
+    const t = setTimeout(() => loadReports(selectedGroup), 3000);
+    return () => clearTimeout(t);
+  }, [reports, selectedGroup]);
+
   const loadData = async () => {
     try {
       setLoading(true);
       const groupsResponse = await groupAPI.getGroups();
-      const groupsData = Array.isArray(groupsResponse.data) 
-        ? groupsResponse.data 
+      const groupsData = Array.isArray(groupsResponse.data)
+        ? groupsResponse.data
         : groupsResponse.data?.results || [];
       setGroups(groupsData);
-      
+
       if (groupsData.length > 0) {
         setSelectedGroup(groupsData[0].id);
         setGroupName(groupsData[0].group_name);
@@ -91,7 +103,7 @@ export default function ReportGenerationScreen({ navigation }: any) {
       }
     } catch (error) {
       console.error('Error loading data:', error);
-      Alert.alert('Error', 'Failed to load data');
+      notify('Error', 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -100,8 +112,8 @@ export default function ReportGenerationScreen({ navigation }: any) {
   const loadReports = async (groupId: string) => {
     try {
       const response = await reportAPI.getReports();
-      const reportsData = Array.isArray(response.data) 
-        ? response.data 
+      const reportsData = Array.isArray(response.data)
+        ? response.data
         : response.data?.results || [];
       setReports(reportsData.filter((r: Report) => r.group === groupId));
     } catch (error) {
@@ -122,7 +134,7 @@ export default function ReportGenerationScreen({ navigation }: any) {
     const now = new Date();
     let start = new Date();
     let end = new Date();
-    
+
     switch (selectedPeriod) {
       case 'this_cycle': {
         const group = groups.find(g => g.id === selectedGroup);
@@ -150,7 +162,7 @@ export default function ReportGenerationScreen({ navigation }: any) {
       default:
         break;
     }
-    
+
     setPeriod(selectedPeriod);
     setStartDate(start);
     setEndDate(end);
@@ -158,22 +170,36 @@ export default function ReportGenerationScreen({ navigation }: any) {
   };
 
   const toggleSection = (sectionId: string) => {
-    setIncludeSections(prev => 
+    setIncludeSections(prev =>
       prev.includes(sectionId)
         ? prev.filter(id => id !== sectionId)
         : [...prev, sectionId]
     );
   };
 
-  const handleDownloadReport = async (reportId: string) => {
+  const handleDownloadReport = async (report: Report) => {
     try {
-      const response = await reportAPI.downloadReport(reportId);
-      
+      const response = await reportAPI.downloadReport(report.id);
+
+      const isExcel = report.format === 'excel';
+      const ext = isExcel ? 'xlsx' : 'pdf';
+      const mime = isExcel
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        : 'application/pdf';
+
+      // Prefer the server-provided filename if the header is exposed,
+      // otherwise fall back to a format-based name.
+      const disposition = response.headers?.['content-disposition'] || '';
+      const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+      const filename = match
+        ? decodeURIComponent(match[1])
+        : `report_${report.id}.${ext}`;
+
       if (Platform.OS === 'web') {
-        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: mime }));
         const link = document.createElement('a');
         link.href = url;
-        link.download = `report_${reportId}.pdf`;
+        link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -185,76 +211,67 @@ export default function ReportGenerationScreen({ navigation }: any) {
         });
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to download report');
+      console.error('Download report failed:', error);
+      notify('Error', 'Failed to download report');
     }
   };
 
   const handleDeleteReport = (reportId: string) => {
     const doDelete = async () => {
-        try {
+      try {
         await reportAPI.deleteReport(reportId);
-        if (Platform.OS === 'web') {
-            window.alert('Report deleted successfully');
-        } else {
-            Alert.alert('Success', 'Report deleted successfully');
-        }
+        notify('Success', 'Report deleted successfully');
         await loadReports(selectedGroup);
-        } catch (error: any) {
-        const msg = error?.response?.data?.error || 'Failed to delete report';
-        Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg);
-        }
+      } catch (error: any) {
+        notify('Error', error?.response?.data?.error || 'Failed to delete report');
+      }
     };
 
     if (Platform.OS === 'web') {
-        if (window.confirm('Are you sure you want to delete this report?')) {
+      if (window.confirm('Are you sure you want to delete this report?')) {
         doDelete();
-        }
-        return;
+      }
+      return;
     }
 
     Alert.alert('Delete Report', 'Are you sure you want to delete this report?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: doDelete },
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: doDelete },
     ]);
-    };
+  };
 
   const handleRegenerateReport = (reportId: string) => {
     const doRegenerate = async () => {
-        try {
+      try {
         await reportAPI.regenerateReport(reportId);
-        if (Platform.OS === 'web') {
-            window.alert('Report regeneration started');
-        } else {
-            Alert.alert('Success', 'Report regeneration started');
-        }
+        notify('Success', 'Report regeneration started');
         await loadReports(selectedGroup);
-        } catch (error: any) {
-        const msg = error?.response?.data?.error || 'Failed to regenerate report';
-        Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg);
-        }
+      } catch (error: any) {
+        notify('Error', error?.response?.data?.error || 'Failed to regenerate report');
+      }
     };
 
     if (Platform.OS === 'web') {
-        if (window.confirm('This will create a new version of the report with updated data. Continue?')) {
+      if (window.confirm('This will create a new version of the report with updated data. Continue?')) {
         doRegenerate();
-        }
-        return;
+      }
+      return;
     }
 
     Alert.alert('Regenerate Report', 'This will create a new version of the report with updated data.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Regenerate', onPress: doRegenerate },
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Regenerate', onPress: doRegenerate },
     ]);
-    };
+  };
 
   const handleGenerateReport = async () => {
     if (!selectedGroup) {
-      Alert.alert('Error', 'Please select a group');
+      notify('Error', 'Please select a group');
       return;
     }
 
     if (startDate > endDate) {
-      Alert.alert('Error', 'Start date must be before end date');
+      notify('Error', 'Start date must be before end date');
       return;
     }
 
@@ -270,23 +287,21 @@ export default function ReportGenerationScreen({ navigation }: any) {
         format: reportFormat,
       };
 
-      const response = await reportAPI.generateReport(payload);
-      
-      Alert.alert(
-        '✅ Report Generation Started',
-        'Your report is being generated. Please wait.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              loadReports(selectedGroup);
-              setGenerating(false);
-            }
-          }
-        ]
-      );
+      await reportAPI.generateReport(payload);
+      await loadReports(selectedGroup);
+      notify('Report generation started', 'It will appear under Recent Reports when ready.');
     } catch (error: any) {
-      Alert.alert('Error', error?.response?.data?.error || 'Failed to generate report');
+      console.error('Generate report failed:', error?.response?.data || error);
+      const data = error?.response?.data;
+      const msg =
+        data?.error ||
+        data?.detail ||
+        (typeof data === 'string' ? data.slice(0, 200) : '') ||
+        error?.message ||
+        'Failed to generate report';
+      notify('Error', msg);
+    } finally {
+      // Always runs, even where the alert never shows (web)
       setGenerating(false);
     }
   };
@@ -331,13 +346,12 @@ export default function ReportGenerationScreen({ navigation }: any) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Icon name="arrow-back" size={24} color="#111827" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>📊 Generate Report</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.viewReportsButton}
             onPress={() => navigation.navigate('ReportsList')}
           >
@@ -345,7 +359,6 @@ export default function ReportGenerationScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        {/* Group Selection */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Select Group</Text>
           <TouchableOpacity
@@ -357,7 +370,7 @@ export default function ReportGenerationScreen({ navigation }: any) {
             </Text>
             <Icon name="chevron-down" size={20} color="#6b7280" />
           </TouchableOpacity>
-          
+
           {showGroupSelector && (
             <View style={styles.dropdown}>
               {groups.map((group) => (
@@ -384,10 +397,9 @@ export default function ReportGenerationScreen({ navigation }: any) {
           )}
         </View>
 
-        {/* Period Selection */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Report Period</Text>
-          
+
           <TouchableOpacity
             style={styles.selectorButton}
             onPress={() => setShowPeriodDropdown(!showPeriodDropdown)}
@@ -425,7 +437,6 @@ export default function ReportGenerationScreen({ navigation }: any) {
           )}
         </View>
 
-        {/* Section Selection - PRESERVED */}
         <View style={styles.section}>
           <TouchableOpacity
             style={styles.sectionToggle}
@@ -449,9 +460,9 @@ export default function ReportGenerationScreen({ navigation }: any) {
                   ]}
                   onPress={() => toggleSection(section.id)}
                 >
-                  <Icon 
-                    name={section.icon as any} 
-                    size={18} 
+                  <Icon
+                    name={section.icon as any}
+                    size={18}
                     color={includeSections.includes(section.id) ? (colors.primary || '#C50982') : '#6b7280'}
                   />
                   <Text style={[
@@ -469,7 +480,6 @@ export default function ReportGenerationScreen({ navigation }: any) {
           )}
         </View>
 
-        {/* Format Selection */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Report Format</Text>
           <View style={styles.formatSelector}>
@@ -482,9 +492,9 @@ export default function ReportGenerationScreen({ navigation }: any) {
                 ]}
                 onPress={() => setReportFormat(format.id as any)}
               >
-                <Icon 
-                  name={format.icon as any} 
-                  size={24} 
+                <Icon
+                  name={format.icon as any}
+                  size={24}
                   color={reportFormat === format.id ? (colors.primary || '#C50982') : '#6b7280'}
                 />
                 <Text style={[
@@ -498,7 +508,6 @@ export default function ReportGenerationScreen({ navigation }: any) {
           </View>
         </View>
 
-        {/* Generate Button */}
         <TouchableOpacity
           style={[styles.generateButton, generating && styles.generateButtonDisabled]}
           onPress={handleGenerateReport}
@@ -514,10 +523,9 @@ export default function ReportGenerationScreen({ navigation }: any) {
           )}
         </TouchableOpacity>
 
-        {/* Current Reports List - Shows all statuses (generating, failed, completed) */}
         <View style={styles.reportsSection}>
           <Text style={styles.sectionTitle}>📄 Recent Reports</Text>
-          
+
           {reports.length === 0 ? (
             <View style={styles.emptyState}>
               <Icon name="document-outline" size={48} color="#9ca3af" />
@@ -528,10 +536,10 @@ export default function ReportGenerationScreen({ navigation }: any) {
               <View key={report.id} style={styles.reportCard}>
                 <View style={styles.reportHeader}>
                   <View style={styles.reportInfo}>
-                    <Icon 
-                      name={getStatusIcon(report.status)} 
-                      size={20} 
-                      color={getStatusColor(report.status)} 
+                    <Icon
+                      name={getStatusIcon(report.status)}
+                      size={20}
+                      color={getStatusColor(report.status)}
                     />
                     <Text style={styles.reportTitle}>
                       {report.report_type?.replace('_', ' ').toUpperCase() || 'Report'}
@@ -541,7 +549,7 @@ export default function ReportGenerationScreen({ navigation }: any) {
                     {report.status?.charAt(0).toUpperCase() + report.status?.slice(1) || 'Unknown'}
                   </Text>
                 </View>
-                
+
                 <View style={styles.reportDetails}>
                   <Text style={styles.reportDate}>
                     📅 {report.start_date ? new Date(report.start_date).toLocaleDateString() : 'N/A'} - {report.end_date ? new Date(report.end_date).toLocaleDateString() : 'N/A'}
@@ -550,19 +558,17 @@ export default function ReportGenerationScreen({ navigation }: any) {
                     🕐 Generated: {report.created_at ? new Date(report.created_at).toLocaleString() : 'N/A'}
                   </Text>
                 </View>
-                
-                {/* Download button - only for completed */}
+
                 {report.status === 'completed' && report.file_exists && (
                   <TouchableOpacity
                     style={styles.downloadButton}
-                    onPress={() => handleDownloadReport(report.id)}
+                    onPress={() => handleDownloadReport(report)}
                   >
                     <Icon name="download" size={16} color="#fff" />
                     <Text style={styles.downloadButtonText}>Download</Text>
                   </TouchableOpacity>
                 )}
-                
-                {/* Retry button - only for failed */}
+
                 {report.status === 'failed' && (
                   <TouchableOpacity
                     style={[styles.downloadButton, styles.retryButton]}
@@ -572,16 +578,14 @@ export default function ReportGenerationScreen({ navigation }: any) {
                     <Text style={styles.downloadButtonText}>Retry</Text>
                   </TouchableOpacity>
                 )}
-                
-                {/* Generating state */}
+
                 {report.status === 'generating' && (
                   <View style={styles.generatingContainer}>
                     <ActivityIndicator size="small" color={colors.primary || '#C50982'} />
                     <Text style={styles.generatingText}>Generating...</Text>
                   </View>
                 )}
-                
-                {/* Delete button - always visible */}
+
                 <TouchableOpacity
                   style={styles.deleteButton}
                   onPress={() => handleDeleteReport(report.id)}
@@ -594,7 +598,6 @@ export default function ReportGenerationScreen({ navigation }: any) {
           )}
         </View>
 
-        {/* View All Reports Link */}
         <TouchableOpacity
           style={styles.viewAllLink}
           onPress={() => navigation.navigate('ReportsList')}

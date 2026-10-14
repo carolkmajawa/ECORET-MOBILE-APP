@@ -305,7 +305,7 @@ export default function GroupLedgerScreen({ navigation }: any) {
       
         <View style={styles.summaryGrid}>
           <View style={styles.summaryGridItem}>
-            <Text style={styles.summaryGridLabel}>💰 Savings</Text>
+            <Text style={styles.summaryGridLabel}>💰 Shares</Text>
             <Text style={styles.summaryGridValue}>
               {formatCurrency(summary.total_savings || 0)}
             </Text>
